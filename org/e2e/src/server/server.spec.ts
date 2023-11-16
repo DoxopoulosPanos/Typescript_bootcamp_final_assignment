@@ -39,7 +39,6 @@ describe('Part 4: Create an account, add deposit and change date (by adding new 
     // deposit 30 euros
     const response2 = await deposit(createdAccount, 30, 0)
 
-
     // change date 
     const response3 = await deposit(createdAccount, 10, 1)
 

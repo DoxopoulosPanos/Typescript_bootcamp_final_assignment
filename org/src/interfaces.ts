@@ -22,3 +22,8 @@ export interface DayDeposit {
   accountId: string,
   deposit: number
 }
+
+export interface ProductHistory {
+  simulationDay: number,
+  products: Product[]
+}
