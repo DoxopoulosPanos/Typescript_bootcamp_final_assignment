@@ -15,22 +15,20 @@ let simulatedDay = 0;
 
 app.use('*', (req, res, next) => {
   console.log(req.headers);
-  console.log(req.headers['simulated-day']);
   if (parseInt(req.headers['simulated-day'] as string, 10) > simulatedDay) {
     // NEW DAY
     simulatedDay += 1;
     // push all deposits to accounts
     for (let i = 0; i < dayDeposits.length; i += 1) {
-      for (let j = 0; j < accounts.length; j += 1) {
+      for (let j = 0; j < accounts.length; j += 1) { // TODO: use filter
         if (accounts[j].id === dayDeposits[i].accountId) {
           accounts[j].balance += dayDeposits[i].deposit;
         }
       }
-      // const accountToDeposit = accounts.filter((account) => account.id === dayDeposits[i].accountId)[0];
-      // accountToDeposit.balance += dayDeposits[i].deposit;
-      // console.log(accountToDeposit);
     }
     dayDeposits = []; // clear array
+  } else if (parseInt(req.headers['simulated-day'] as string, 10) === simulatedDay) {
+    // return res.status(400).send("simulated-day is smaller than the server's day");
   }
   next();
 });
