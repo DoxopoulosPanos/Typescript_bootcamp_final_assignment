@@ -12,11 +12,6 @@ export interface Product {
   price: number,
 }
 
-// export interface Account extends AccountResponse {
-//   simulatedDay: number,
-//   todayDeposits: number
-// }
-
 export interface DayDeposit {
   id: string,
   accountId: string,
@@ -26,4 +21,9 @@ export interface DayDeposit {
 export interface ProductHistory {
   simulationDay: number,
   products: Product[]
+}
+
+export interface AccountWithInterest extends Account {
+  // interest: number,
+  currentMonthEarnings: number
 }

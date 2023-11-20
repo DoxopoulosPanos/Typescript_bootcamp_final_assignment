@@ -110,6 +110,21 @@ async function addProduct(title: string, description: string, price: number, sto
   return await axios.request(config);
 }
 
+async function updateInterest(rate: number) {
+  const data = JSON.stringify({ rate: rate });
+
+  const config = {
+    method: 'post',
+    url: 'http://localhost:3000/interest',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    data,
+  };
+
+  const response = await axios.request(config);
+  return response;
+}
 
 describe('PART 1: create account', () => {
   it('should return 200', async () => {
@@ -245,5 +260,56 @@ describe('PART 6 and PART 8: add new product and get the product details', () =>
     const productRes = await getProducts(testSimulatedDay + 2)
     const solarSystem = (productRes.data as Product[]).filter((product) => product.id===newProduct.id)
     expect(solarSystem[0].title).toBe('Solar System');
+  });
+});
+
+// describe('PART 9: check interest', () => {
+//   it('interest in day 30 should be 10065', async () => {
+
+//     const createdAccountResponse = await createAccount("testInterestAccount")
+//     const createdAccount = createdAccountResponse.data as Account
+
+//     // deposit 30 euros
+//     const response2 = await deposit(createdAccount, 10000, testSimulatedDay + 2)
+
+//     // use request all products endpoint to increase the simulated day
+//     for (let i=3; i<32;i++){
+//       const productRes = await getProducts(testSimulatedDay + i)
+//     }
+//     // here we should be at day=30
+//     // check if interest applied to new account
+//     const accountRes = await axios.get('/accounts');
+//     const testAccount = (accountRes.data as Account[]).filter((account) => account.id===createdAccount.id)
+//     expect(Math.floor(testAccount[0].balance)).toBe(10065);  
+//   });
+// });
+
+describe('PART 9: check dynamic interest', () => {
+  it('interest in day 30 should be 10065', async () => {
+
+    const createdAccountResponse = await createAccount("testInterestFlexAccount")
+    const createdAccount = createdAccountResponse.data as Account
+
+    // deposit 10000 euros
+    const response2 = await deposit(createdAccount, 10000, testSimulatedDay + 2)
+
+    // use request all products endpoint to increase the simulated day
+    for (let i=3; i<15;i++){
+      const productRes = await getProducts(testSimulatedDay + i)
+    }
+
+    // update interest
+    const newInterestRes = await updateInterest(0.01);
+    expect(newInterestRes.status).toBe(200);
+
+
+    for (let i=15; i<32;i++){
+      const productRes = await getProducts(testSimulatedDay + i)
+    }
+    // here we should be at day=30
+    // check if interest applied to new account
+    const accountRes = await axios.get('/accounts');
+    const testAccount = (accountRes.data as Account[]).filter((account) => account.id===createdAccount.id)
+    expect(Math.floor(testAccount[0].balance)).toBe(10033);  
   });
 });

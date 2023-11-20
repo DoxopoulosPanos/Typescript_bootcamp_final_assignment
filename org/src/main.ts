@@ -2,7 +2,7 @@ import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import bodyParser from 'body-parser';
 import {
-  Account, DayDeposit, Product, ProductHistory,
+  AccountWithInterest, DayDeposit, Product, ProductHistory,
 } from './interfaces';
 import initialProducts from './initialProducts';
 
@@ -10,11 +10,31 @@ const host = process.env.HOST ?? 'localhost';
 const port = (process.env.PORT != null) ? Number(process.env.PORT) : 3000;
 
 const app = express();
-const accounts: Account[] = [];
+const accountsWithInterest: AccountWithInterest[] = [];
 const products: Product[] = initialProducts.initialProducts;
 const productHistory: ProductHistory[] = [];
 let dayDeposits: DayDeposit[] = [];
 let simulatedDay = 0;
+let interest = 0.08;
+
+function addInterests() {
+  // accountsWithInterest.forEach((account) => { account.balance *= 1 + account.interest; });
+  console.log('day is:', simulatedDay);
+  for (let i = 0; i < accountsWithInterest.length; i += 1) {
+    accountsWithInterest[i].balance += accountsWithInterest[i].currentMonthEarnings;
+    accountsWithInterest[i].currentMonthEarnings = 0; // initialize
+  }
+}
+
+function calculateDayInterests() {
+  for (let i = 0; i < accountsWithInterest.length; i += 1) {
+    const dayEarnings = accountsWithInterest[i].balance
+      * (interest) * (1 / 365);
+    accountsWithInterest[i].currentMonthEarnings += dayEarnings;
+    console.log('new interest rate is:', accountsWithInterest[i].currentMonthEarnings);
+  }
+  console.log('interest is: ', interest);
+}
 
 app.use('*', (req, res, next) => {
   if (parseInt(req.headers['simulated-day'] as string, 10) > simulatedDay) {
@@ -28,14 +48,19 @@ app.use('*', (req, res, next) => {
     console.log('simulated day is: ', simulatedDay);
     // push all deposits to accounts
     for (let i = 0; i < dayDeposits.length; i += 1) {
-      for (let j = 0; j < accounts.length; j += 1) { // TODO: use filter
-        if (accounts[j].id === dayDeposits[i].accountId) {
-          accounts[j].balance += dayDeposits[i].deposit;
-          console.log('new account balance is: ', accounts[j].balance);
+      for (let j = 0; j < accountsWithInterest.length; j += 1) { // TODO: use filter
+        if (accountsWithInterest[j].id === dayDeposits[i].accountId) {
+          accountsWithInterest[j].balance += dayDeposits[i].deposit;
+          console.log('new account balance is: ', accountsWithInterest[j].balance);
         }
       }
     }
     dayDeposits = []; // clear array
+  }
+  // calculate interest for this day
+  calculateDayInterests();
+  if (simulatedDay % 31 === 0) {
+    addInterests(); // maybe should be executed even later
   }
   next();
 });
@@ -53,13 +78,15 @@ app.post('/accounts', (req, res) => {
   }
   try {
     console.log(req.body);
-    const newAccount: Account = {
+    const newAccount: AccountWithInterest = {
       id: uuidv4(),
       name: req.body.name,
       balance: 0,
+      // interest: 0.08,
+      currentMonthEarnings: 0,
     };
 
-    accounts.push(newAccount);
+    accountsWithInterest.push(newAccount);
 
     return res.send(newAccount);
   } catch {
@@ -70,7 +97,7 @@ app.post('/accounts', (req, res) => {
 
 app.get('/accounts', (req, res) => {
   try {
-    return res.status(201).send(accounts);
+    return res.status(201).send(accountsWithInterest);
   } catch {
     // in case of any error: internal server error
     return res.status(500).send({});
@@ -79,7 +106,9 @@ app.get('/accounts', (req, res) => {
 
 app.get('/accounts/:accountId', (req, res) => {
   try {
-    const account = accounts.filter((singleAccount) => singleAccount.id === req.params.accountId);
+    const account = accountsWithInterest.filter(
+      (singleAccount) => singleAccount.id === req.params.accountId,
+    );
     if (account.length === 0) {
       return res.status(404).send();
     }
@@ -99,7 +128,9 @@ app.post('/accounts/:accountId/deposits', (req, res) => {
     return res.status(400).send();
   }
   try {
-    const account = accounts.filter((singleAccount) => singleAccount.id === req.params.accountId);
+    const account = accountsWithInterest.filter(
+      (singleAccount) => singleAccount.id === req.params.accountId,
+    );
     if (account.length === 0) {
       return res.status(400).send();
     }
@@ -137,7 +168,7 @@ app.post('/accounts/:accountId/purchases', (req, res) => {
   try {
     console.log('requestedProduct', requestedProduct);
     const product = products.filter((singleProduct) => singleProduct.id === requestedProduct)[0];
-    const account = accounts.filter(
+    const account = accountsWithInterest.filter(
       (singleAccount) => singleAccount.id === req.params.accountId,
     )[0];
 
@@ -236,6 +267,20 @@ app.get('/products/:productsId', (req, res) => {
   } catch {
     // ideally this should be 5xx
     return res.status(404).send();
+  }
+});
+
+app.post('/interest', (req, res) => {
+  console.log('account creation');
+  if ((Object.keys(req.body).length > 1) || (req.body.rate == null)) {
+    return res.status(400).send();
+  }
+  try {
+    interest = parseFloat(req.body.rate);
+    return res.status(200).send();
+  } catch {
+    // ideally this should be 5xx
+    return res.status(400).send();
   }
 });
 
