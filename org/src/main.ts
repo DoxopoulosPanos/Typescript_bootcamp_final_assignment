@@ -12,29 +12,30 @@ const port = (process.env.PORT != null) ? Number(process.env.PORT) : 3000;
 const app = express();
 const accounts: Account[] = [];
 const products: Product[] = initialProducts.initialProducts;
-const productHistory: ProductHistory[] = [{ simulationDay: 0, products }];
+const productHistory: ProductHistory[] = [];
 let dayDeposits: DayDeposit[] = [];
 let simulatedDay = 0;
 
 app.use('*', (req, res, next) => {
-  console.log(req.headers);
   if (parseInt(req.headers['simulated-day'] as string, 10) > simulatedDay) {
-    // push products in History at the end of the day
-    productHistory.push({ simulationDay: 0, products });
+    const productsCopy = JSON.parse(JSON.stringify(products));
+    productHistory.push({ simulationDay: simulatedDay, products: productsCopy });
+    // console.log('new product History: ');
+    // console.log(util.inspect(productHistory, { showHidden: false, depth: null, colors: true }));
 
     // NEW DAY
     simulatedDay += 1;
+    console.log('simulated day is: ', simulatedDay);
     // push all deposits to accounts
     for (let i = 0; i < dayDeposits.length; i += 1) {
       for (let j = 0; j < accounts.length; j += 1) { // TODO: use filter
         if (accounts[j].id === dayDeposits[i].accountId) {
           accounts[j].balance += dayDeposits[i].deposit;
+          console.log('new account balance is: ', accounts[j].balance);
         }
       }
     }
     dayDeposits = []; // clear array
-  } else if (parseInt(req.headers['simulated-day'] as string, 10) === simulatedDay) {
-    // return res.status(400).send("simulated-day is smaller than the server's day");
   }
   next();
 });
@@ -46,6 +47,7 @@ app.get('/', (req, res) => {
 });
 
 app.post('/accounts', (req, res) => {
+  console.log('account creation');
   if ((Object.keys(req.body).length > 1) || (req.body.name == null)) {
     return res.status(400).send();
   }
@@ -90,7 +92,8 @@ app.get('/accounts/:accountId', (req, res) => {
 
 // PART B
 app.post('/accounts/:accountId/deposits', (req, res) => {
-  console.log(req.headers['simulated-day']);
+  console.log('request for deposits');
+
   const depositedAmount: number = parseInt(req.body.amount, 10); // check if number can be float
   if (depositedAmount <= 0) {
     return res.status(400).send();
@@ -125,11 +128,18 @@ app.post('/accounts/:accountId/deposits', (req, res) => {
 
 app.post('/accounts/:accountId/purchases', (req, res) => {
   console.log('purchases request');
-  console.log(req.headers);
+  if ((Object.keys(req.body).length > 1) || (req.body.productId == null)) {
+    // Invalid input
+    return res.status(400).send();
+  }
   const requestedProduct = req.body.productId;
 
   try {
+    console.log('requestedProduct', requestedProduct);
     const product = products.filter((singleProduct) => singleProduct.id === requestedProduct)[0];
+    const account = accounts.filter(
+      (singleAccount) => singleAccount.id === req.params.accountId,
+    )[0];
 
     // Invalid input (product not found)
     if (product === null) {
@@ -140,18 +150,19 @@ app.post('/accounts/:accountId/purchases', (req, res) => {
       return res.status(409).send();
     }
     // Not enough funds
-    if (product.price <= 0) {
+    if (account.balance < product.price) {
       return res.status(409).send();
     }
     // Illegal simulation day
-    if (parseInt(req.headers['simulated-day'] as string, 10) <= simulatedDay) {
+    if (parseInt(req.headers['simulated-day'] as string, 10) < simulatedDay) {
       return res.status(400).send();
     }
 
     // proceed with purchase
     product.stock -= 1;
+    account.balance -= product.price;
 
-    return res.status(200).send();
+    return res.status(201).send();
   } catch {
     // ideally this should be 5xx
     return res.status(404).send();
@@ -160,7 +171,15 @@ app.post('/accounts/:accountId/purchases', (req, res) => {
 
 app.post('/products', (req, res) => {
   console.log('adding new product...');
-  console.log(req.headers);
+
+  if ((Object.keys(req.body).length !== 4)
+    || (req.body.title == null)
+    || (req.body.description == null)
+    || (req.body.price == null)
+    || (req.body.stock == null)) {
+    // Invalid input
+    return res.status(400).send();
+  }
 
   try {
     const product: Product = {
@@ -172,7 +191,7 @@ app.post('/products', (req, res) => {
     };
 
     products.push(product);
-    return res.status(200).send(product);
+    return res.status(201).send(product);
   } catch {
     return res.status(400).send();
   }
@@ -181,10 +200,13 @@ app.post('/products', (req, res) => {
 app.get('/products', (req, res) => {
   try {
     const dayToFetchData = parseInt(req.headers['simulated-day'] as string, 10);
-    const data = productHistory.filter(
-      (productsByDay) => productsByDay.simulationDay === dayToFetchData,
-    );
-    return res.status(201).send(data[0].products);
+    let requestedProducts = products; // if current dayrequested
+    if (dayToFetchData < simulatedDay) {
+      requestedProducts = productHistory.filter(
+        (productsByDay) => productsByDay.simulationDay === dayToFetchData,
+      )[0].products;
+    }
+    return res.status(201).send(requestedProducts);
   } catch {
     // in case of any error: internal server error
     return res.status(500).send({});
@@ -194,10 +216,22 @@ app.get('/products', (req, res) => {
 app.get('/products/:productsId', (req, res) => {
   try {
     const requestedProduct = req.params.productsId;
-    const product = products.filter((singleProduct) => singleProduct.id === requestedProduct);
+
+    const dayToFetchData = parseInt(req.headers['simulated-day'] as string, 10);
+    let productsToSearch = products; // if current dayrequested
+    if (dayToFetchData < simulatedDay) {
+      productsToSearch = productHistory.filter(
+        (productsByDay) => productsByDay.simulationDay === dayToFetchData,
+      )[0].products;
+    }
+
+    const product = productsToSearch.filter(
+      (singleProduct) => singleProduct.id === requestedProduct,
+    );
     if (product.length === 0) {
       return res.status(404).send();
     }
+
     return res.send(product[0]);
   } catch {
     // ideally this should be 5xx
